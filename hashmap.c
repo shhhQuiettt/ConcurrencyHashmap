@@ -40,7 +40,6 @@ HashMap *newHashMap(int capacity) {
   /* .iteratorState = NULL}; */
   pthread_cond_init(&map->polling_condition, NULL);
 
-
   pthread_mutexattr_t mutex_attr;
   pthread_mutexattr_init(&mutex_attr);
   pthread_mutexattr_settype(&mutex_attr, PTHREAD_MUTEX_RECURSIVE);
@@ -175,17 +174,19 @@ void _print_pair(KeyValuePair *pair) {
     return;
   }
 
-  printf("%d -> %d", pair->key, pair->value);
+  printf("%d -> %d\n", pair->key, pair->value);
   _print_pair(pair->next);
 }
 void iterate(HashMap *map) {
 
+  printf("Start of iteration\n");
   for (int i = 0; i < map->capacity; ++i) {
     int index = _hash(i, map);
     pthread_mutex_lock(&map->pairMutexes[index]);
     _print_pair(map->pairs[i]);
     pthread_mutex_unlock(&map->pairMutexes[index]);
   }
+  printf("End of iteration\n\n");
 }
 ///
 
