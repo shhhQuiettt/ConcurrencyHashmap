@@ -84,7 +84,7 @@ bool insert(HashMap *map, int key, int value) {
 
   pthread_mutex_lock(&map->pairMutexes[index]);
   bool res = _insertToPair(&map->pairs[index], newPair);
-  if (res == 0) {
+  if (res) {
     map->size++;
     pthread_cond_broadcast(&map->polling_condition);
   }

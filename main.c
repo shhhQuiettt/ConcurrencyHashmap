@@ -1,5 +1,6 @@
 #include "hashmap.h"
 #include <pthread.h>
+#include <stdio.h>
 #include <unistd.h>
 
 #define MAP_CAPACITY 787
@@ -41,13 +42,15 @@ void *addRemoveWorker(void *rawMap) {
 
 void *batchAddRemoveWorker(void *rawMap) {
   HashMap *map = (HashMap *)rawMap;
-  int keys[10];
+  const int noOfElements = 16;
+  int keys[noOfElements];
+
   while (0 == 0) {
-    for (int i = 0; i < 10; ++i) {
+    for (int i = 0; i < noOfElements; ++i) {
       keys[i] = randomKey();
     }
 
-    for (int i = 0; i < 10; ++i) {
+    for (int i = 0; i < noOfElements; ++i) {
       insert(map, keys[i], rand());
     }
 
@@ -79,11 +82,28 @@ void *pollingWorker(void *rawMap) {
     int key = randomKey();
     int val;
     poll(map, key, &val);
-    printf("Finally! Value: %d\n", val);
+    printf("Finally! Key: %d, Value: %d\n", key, val);
   }
 
   return NULL;
 }
+
+/* void* pollAwait(void* rawMap) { */
+/*     HashMap* map = (HashMap*) rawMap; */
+/*     int val; */
+/*     poll(map, 3, &val); */
+/*     printf("Val %d\n", val); */
+/*     fflush(stdout); */
+/*     return NULL; */
+/* }; */
+
+/* void* pollSet(void *rawMap) { */
+/*     HashMap* map = (HashMap*) rawMap; */
+/*     usleep(1e6*1); */
+/*     insert(map, 3, 10); */
+/*     printf("Set\n!"); */
+/*     return NULL; */
+/* } */
 
 int main() {
   srand(RAND_SEED);
@@ -97,6 +117,8 @@ int main() {
   pthread_create(&threads[3], NULL, randomKeyGetWorker, map);
   pthread_create(&threads[4], NULL, pollingWorker, map);
 
+  /* pthread_create(&threads[0], NULL, pollAwait, map); */
+  /* pthread_create(&threads[1], NULL, pollSet, map); */
   for (int i = 0; i < 5; ++i) {
     pthread_join(threads[i], NULL);
   }
