@@ -1,4 +1,6 @@
 #include <assert.h>
+#include <pthread.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -19,24 +21,31 @@ typedef struct {
   KeyValuePair **pairs;
   int size;
   int capacity;
-  IteratorState *iteratorState;
+  /* IteratorState *iteratorState; */
+  pthread_mutex_t *pairMutexes;
+  pthread_cond_t polling_condition;
 } HashMap;
 
 /////////
 
-HashMap *newHasmap(int capacity) {
+HashMap *newHashMap(int capacity) {
   HashMap *map = malloc(sizeof(HashMap));
 
-  *map = (HashMap){.capacity = capacity,
-                   .size = 0,
-                   .pairs = malloc(sizeof(KeyValuePair **) * capacity),
-                   .iteratorState = NULL};
+  *map = (HashMap){
+      .capacity = capacity,
+      .size = 0,
+      .pairs = malloc(sizeof(KeyValuePair **) * capacity),
+      .pairMutexes = malloc(capacity * sizeof(pthread_mutex_t)),
+  };
+  /* .iteratorState = NULL}; */
+  pthread_cond_init(&map->polling_condition, NULL);
 
-  map->iteratorState = malloc(sizeof(IteratorState));
-  map->iteratorState->index = 0;
-  map->iteratorState->pair = map->pairs[0];
 
+  pthread_mutexattr_t mutex_attr;
+  pthread_mutexattr_init(&mutex_attr);
+  pthread_mutexattr_settype(&mutex_attr, PTHREAD_MUTEX_RECURSIVE);
   for (int i = 0; i < capacity; i++) {
+    pthread_mutex_init(&map->pairMutexes[i], &mutex_attr);
     map->pairs[i] = NULL;
   }
 
@@ -49,52 +58,67 @@ int _hash(int key, HashMap *map) { return key % map->capacity; }
 
 ////////////
 
-void _insertToPair(KeyValuePair **pair, KeyValuePair *newPair) {
+// Returns true if inserting succeded, false if key already existed and updates
+// value
+bool _insertToPair(KeyValuePair **pair, KeyValuePair *newPair) {
   if (*pair == NULL) {
     *pair = newPair;
-    return;
+    return true;
   }
 
   if ((*pair)->key == newPair->key) {
     (*pair)->value = newPair->value;
     free(newPair);
-    return;
+    return false;
   }
 
-  _insertToPair(&((*pair)->next), newPair);
+  return _insertToPair(&((*pair)->next), newPair);
 }
 
-void insert(HashMap *map, int key, int value) {
+// Returns true if key is new succeded, false if key already existed and updates
+// value
+bool insert(HashMap *map, int key, int value) {
   int index = _hash(key, map);
 
   KeyValuePair *newPair = malloc(sizeof(KeyValuePair));
   *newPair = (KeyValuePair){.key = key, .value = value, .next = NULL};
 
-  _insertToPair(&map->pairs[index], newPair);
+  pthread_mutex_lock(&map->pairMutexes[index]);
+  bool res = _insertToPair(&map->pairs[index], newPair);
+  if (res == 0) {
+    map->size++;
+    pthread_cond_broadcast(&map->polling_condition);
+  }
+  pthread_mutex_unlock(&map->pairMutexes[index]);
+  return res;
 };
 
 ///////////
 
-int _getFromPair(KeyValuePair *pair, int key) {
+bool _getFromPair(KeyValuePair *pair, int key, int *out_value) {
   if (pair == NULL) {
-    return -1;
+    return false;
   }
 
   if (pair->key == key) {
-    return pair->value;
+    *out_value = pair->value;
+    return true;
   }
 
   if (pair->next != NULL) {
-    return _getFromPair(pair->next, key);
+    return _getFromPair(pair->next, key, out_value);
   }
 
-  return -1;
+  return false;
 }
 
-int get(HashMap *map, int key) {
+bool get(HashMap *map, int key, int *outValue) {
   int index = _hash(key, map);
 
-  return _getFromPair(map->pairs[index], key);
+  pthread_mutex_lock(&map->pairMutexes[index]);
+  bool ok = _getFromPair(map->pairs[index], key, outValue);
+  pthread_mutex_unlock(&map->pairMutexes[index]);
+  return ok;
 }
 ////////////
 
@@ -125,28 +149,45 @@ void _removeFromPair(KeyValuePair **pair, int key) {
 void removeKey(HashMap *map, int key) {
   int index = _hash(key, map);
 
+  pthread_mutex_lock(&map->pairMutexes[index]);
   _removeFromPair(&map->pairs[index], key);
+  pthread_mutex_unlock(&map->pairMutexes[index]);
 };
 
 ////////////
 
-void poll(HashMap *map, int key);
+void poll(HashMap *map, int key, int *out_value) {
+  int index = _hash(key, map);
 
-// What when item added in iteration?
+  // execution order with removing
+  pthread_mutex_lock(&map->pairMutexes[index]);
 
+  while (!get(map, key, out_value)) {
+    pthread_cond_wait(&map->polling_condition, &map->pairMutexes[index]);
+  }
 
-/* KeyValuePair *next(HashMap *map) { */
-/*   if (map->iteratorState->index == map->capacity) { */
-/*     map->iteratorState->index = 0; */
-/*     map->iteratorState->pair = map->pairs[0]; */
-/*     return NULL; */
-/*   } */
+  pthread_mutex_unlock(&map->pairMutexes[index]);
+}
 
-/*   while (map->pairs[map->iteratorState->index]) */
-  
+////
+void _print_pair(KeyValuePair *pair) {
+  if (pair == NULL) {
+    return;
+  }
 
+  printf("%d -> %d", pair->key, pair->value);
+  _print_pair(pair->next);
+}
+void iterate(HashMap *map) {
 
-/* }; */
+  for (int i = 0; i < map->capacity; ++i) {
+    int index = _hash(i, map);
+    pthread_mutex_lock(&map->pairMutexes[index]);
+    _print_pair(map->pairs[i]);
+    pthread_mutex_unlock(&map->pairMutexes[index]);
+  }
+}
+///
 
 void _cleanPair(KeyValuePair *pair) {
   if (pair == NULL) {
@@ -162,43 +203,11 @@ void _cleanPair(KeyValuePair *pair) {
 void clean(HashMap *map) {
   for (int i = 0; i < map->capacity; i++) {
     _cleanPair(map->pairs[i]);
+    pthread_mutex_destroy(&map->pairMutexes[i]);
   }
-  free(map->iteratorState);
   free(map->pairs);
+  free(map->pairMutexes);
+
+  pthread_cond_destroy(&map->polling_condition);
   free(map);
-}
-
-void testHashMap() {
-  HashMap *map = newHasmap(10); // Create a new hashmap with capacity 10
-
-  // Test inserting values
-  insert(map, 1, 100);
-  insert(map, 2, 200);
-  insert(map, 3, 300);
-  insert(map, 4, 400);
-  insert(map, 5, 500);
-
-  // Test getting values
-  assert(get(map, 3) == 300);
-  assert(get(map, 5) == 500);
-  assert(get(map, 10) == -1); // Key not found
-
-  // Test removing values
-  removeKey(map, 2);
-  removeKey(map, 4);
-
-  // Test getting values after removal
-  assert(get(map, 2) == -1); // Key not found
-  assert(get(map, 4) == -1); // Key not found
-
-  // Clean up
-  clean(map);
-}
-
-int main() {
-  HashMap *map = newHasmap(10);
-  clean(map);
-
-  testHashMap();
-  return 0;
 }
