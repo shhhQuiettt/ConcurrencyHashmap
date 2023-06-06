@@ -88,7 +88,7 @@ void *pollingWorker(void *rawMap) {
 int main() {
   srand(RAND_SEED);
 
-  HashMap *map = newHashMap(MAPCAPACITY);
+  HashMap *map = newHashMap(MAP_CAPACITY);
 
   pthread_t threads[5];
   pthread_create(&threads[0], NULL, iterator_worker, map);
