@@ -18,7 +18,6 @@ typedef struct {
   KeyValuePair **pairs;
   atomic_uint size;
   int capacity;
-  pthread_mutex_t globalMutex;
   pthread_mutex_t *pairMutexes;
   pthread_cond_t polling_condition;
 } HashMap;
