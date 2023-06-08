@@ -1,30 +1,11 @@
+#include "hashmap.h"
 #include <assert.h>
 #include <pthread.h>
+#include <stdatomic.h>
+
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
-
-typedef struct KeyValuePair KeyValuePair;
-
-typedef struct {
-  int index;
-  KeyValuePair *pair;
-} IteratorState;
-
-struct KeyValuePair {
-  int key;
-  int value;
-  KeyValuePair *next;
-};
-
-typedef struct {
-  KeyValuePair **pairs;
-  int size;
-  int capacity;
-  /* IteratorState *iteratorState; */
-  pthread_mutex_t *pairMutexes;
-  pthread_cond_t polling_condition;
-} HashMap;
 
 /////////
 
@@ -85,7 +66,7 @@ bool insert(HashMap *map, int key, int value) {
   pthread_mutex_lock(&map->pairMutexes[index]);
   bool res = _insertToPair(&map->pairs[index], newPair);
   if (res) {
-    map->size++;
+    atomic_fetch_add(&map->size, 1);
     pthread_cond_broadcast(&map->polling_condition);
   }
   pthread_mutex_unlock(&map->pairMutexes[index]);
@@ -121,7 +102,9 @@ bool get(HashMap *map, int key, int *outValue) {
 }
 ////////////
 
-int count(HashMap *map) { return map->size; };
+int count(HashMap *map) {
+    return atomic_load(&map->size); 
+};
 
 ////////////
 

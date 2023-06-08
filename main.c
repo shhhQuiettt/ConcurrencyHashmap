@@ -1,10 +1,12 @@
 #include "hashmap.h"
 #include <pthread.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <time.h>
 #include <unistd.h>
 
-#define MAP_CAPACITY 787
-#define RAND_SEED 12345
+#define MAP_CAPACITY 29
+/* #define RAND_SEED 12345 */
 
 int randomKey() { return rand() % 200; }
 
@@ -15,14 +17,14 @@ void waitUpToSecond() {
 
 /////
 
-void *iterator_worker(void *rawMap) {
+void *iteratorWorker(void *rawMap) {
   HashMap *map = (HashMap *)rawMap;
 
   while (0 == 0) {
     iterate(map);
   }
 
-  waitUpToSecond();
+  /* waitUpToSecond(); */
 
   return NULL;
 }
@@ -42,7 +44,7 @@ void *addRemoveWorker(void *rawMap) {
 
 void *batchAddRemoveWorker(void *rawMap) {
   HashMap *map = (HashMap *)rawMap;
-  const int noOfElements = 16;
+  const int noOfElements = 24;
   int keys[noOfElements];
 
   while (0 == 0) {
@@ -88,38 +90,31 @@ void *pollingWorker(void *rawMap) {
   return NULL;
 }
 
-/* void* pollAwait(void* rawMap) { */
-/*     HashMap* map = (HashMap*) rawMap; */
-/*     int val; */
-/*     poll(map, 3, &val); */
-/*     printf("Val %d\n", val); */
-/*     fflush(stdout); */
-/*     return NULL; */
-/* }; */
+void *countWorker(void *rawMap) {
 
-/* void* pollSet(void *rawMap) { */
-/*     HashMap* map = (HashMap*) rawMap; */
-/*     usleep(1e6*1); */
-/*     insert(map, 3, 10); */
-/*     printf("Set\n!"); */
-/*     return NULL; */
-/* } */
+  HashMap *map = (HashMap *)rawMap;
+  while (0 == 0) {
+    waitUpToSecond();
+    printf("Size of map: %d\n", count(map));
+  }
+
+  return NULL;
+}
 
 int main() {
-  srand(RAND_SEED);
+  srand(time(NULL));
 
   HashMap *map = newHashMap(MAP_CAPACITY);
 
-  pthread_t threads[5];
-  pthread_create(&threads[0], NULL, iterator_worker, map);
+  pthread_t threads[6];
+  pthread_create(&threads[0], NULL, iteratorWorker, map);
   pthread_create(&threads[1], NULL, addRemoveWorker, map);
   pthread_create(&threads[2], NULL, batchAddRemoveWorker, map);
   pthread_create(&threads[3], NULL, randomKeyGetWorker, map);
   pthread_create(&threads[4], NULL, pollingWorker, map);
+  pthread_create(&threads[5], NULL, countWorker, map);
 
-  /* pthread_create(&threads[0], NULL, pollAwait, map); */
-  /* pthread_create(&threads[1], NULL, pollSet, map); */
-  for (int i = 0; i < 5; ++i) {
+  for (int i = 0; i < 6; ++i) {
     pthread_join(threads[i], NULL);
   }
 }

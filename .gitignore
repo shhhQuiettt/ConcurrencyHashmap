@@ -1,2 +1,4 @@
 vgcore*
 ./hash
+program
+*.o

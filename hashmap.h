@@ -2,18 +2,11 @@
 #define HASHMAP_H
 #endif
 
-#include <assert.h>
 #include <pthread.h>
 #include <stdbool.h>
-#include <stdio.h>
-#include <stdlib.h>
+#include <stdatomic.h>
 
 typedef struct KeyValuePair KeyValuePair;
-
-typedef struct {
-  int index;
-  KeyValuePair *pair;
-} IteratorState;
 
 struct KeyValuePair {
   int key;
@@ -23,9 +16,8 @@ struct KeyValuePair {
 
 typedef struct {
   KeyValuePair **pairs;
-  int size;
+  atomic_uint size;
   int capacity;
-  /* IteratorState *iteratorState; */
   pthread_mutex_t globalMutex;
   pthread_mutex_t *pairMutexes;
   pthread_cond_t polling_condition;
